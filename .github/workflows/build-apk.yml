@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+          cache: true
+
+      # نولّد مجلد android في مكان مؤقت ثم ننسخه فقط، حتى لا تُمسّ ملفاتك
+      - name: Generate Android scaffold
+        run: |
+          flutter create --platforms=android --org com.darasi --project-name darasi /tmp/scaffold
+          cp -r /tmp/scaffold/android ./android
+          cp /tmp/scaffold/.metadata ./.metadata
+
+      - name: Patch Android (notifications + Arabic app name)
+        run: python3 tools/patch_android.py
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darasi-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish APK to Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Darasi build ${{ github.run_number }}
+          files: build/app/outputs/flutter-apk/app-release.apk
